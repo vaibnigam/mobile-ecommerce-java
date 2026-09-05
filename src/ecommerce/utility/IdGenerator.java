@@ -2,14 +2,25 @@ package ecommerce.utility;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-public final class IdGenerator {
-    private static final AtomicLong COUNTER =
-            new AtomicLong(System.currentTimeMillis());
+public class IdGenerator {
 
-    private IdGenerator() {
+    private final AtomicLong counter;
+
+    public IdGenerator(long initialValue) {
+        if (initialValue < 0) {
+            throw new IllegalArgumentException(
+                    "Initial value cannot be negative"
+            );
+        }
+
+        this.counter = new AtomicLong(initialValue);
     }
 
-    public static long nextId() {
-        return COUNTER.incrementAndGet();
+    public long nextId() {
+        return counter.incrementAndGet();
+    }
+
+    public long currentId() {
+        return counter.get();
     }
 }
