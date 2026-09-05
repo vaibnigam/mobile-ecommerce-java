@@ -1,8 +1,7 @@
 package ecommerce.model;
 
 public class CartItem {
-
-    private Product product;
+    private final Product product;
     private int quantity;
 
     public CartItem(Product product, int quantity) {
@@ -10,19 +9,8 @@ public class CartItem {
         this.quantity = quantity;
     }
 
-    public Product getProduct() {
-        return product;
-    }
-
-    public int getQuantity() {
-        return quantity;
-    }
-
-    public void setQuantity(int quantity) {
-        this.quantity = quantity;
-    }
-
-    public double getTotalPrice() {
-        return product.getPrice() * quantity;
-    }
+    public Product getProduct() { return product; }
+    public int getQuantity() { return quantity; }
+    public void setQuantity(int quantity) { this.quantity = quantity; }
+    public double getTotalPrice() { return product.getPrice() * quantity; }
 }

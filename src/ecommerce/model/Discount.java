@@ -1,24 +1,24 @@
 package ecommerce.model;
 
 public class Discount {
-
-    private String code;
-    private double percentage;
+    private final String code;
+    private final double percentage;
 
     public Discount(String code, double percentage) {
-        this.code = code;
+        if (code == null || code.isBlank()) {
+            throw new IllegalArgumentException("Discount code cannot be empty.");
+        }
+        if (percentage < 0 || percentage > 100) {
+            throw new IllegalArgumentException("Discount percentage must be between 0 and 100.");
+        }
+        this.code = code.toUpperCase();
         this.percentage = percentage;
     }
 
-    public String getCode() {
-        return code;
-    }
-
-    public double getPercentage() {
-        return percentage;
-    }
+    public String getCode() { return code; }
+    public double getPercentage() { return percentage; }
 
     public double calculateDiscount(double amount) {
-        return amount * percentage / 100;
+        return Math.min(amount, amount * percentage / 100.0);
     }
 }

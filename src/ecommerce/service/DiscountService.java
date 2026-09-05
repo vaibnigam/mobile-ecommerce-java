@@ -2,33 +2,33 @@ package ecommerce.service;
 
 import ecommerce.model.Discount;
 
+import java.util.Map;
+
 public class DiscountService {
+    private final Map<String, Discount> discounts = Map.of(
+            "MOBILE10", new Discount("MOBILE10", 10),
+            "WELCOME5", new Discount("WELCOME5", 5),
+            "SMART15", new Discount("SMART15", 15)
+    );
 
     public Discount getDiscount(String code) {
-
         if (code == null || code.isBlank()) {
             return null;
         }
 
-        if (code.equalsIgnoreCase("MOBILE10")) {
-            return new Discount("MOBILE10", 10);
+        Discount discount = discounts.get(code.trim().toUpperCase());
+
+        if (discount == null) {
+            throw new IllegalArgumentException("Invalid discount code.");
         }
 
-        if (code.equalsIgnoreCase("WELCOME5")) {
-            return new Discount("WELCOME5", 5);
-        }
-
-        throw new IllegalArgumentException("Invalid discount code.");
+        return discount;
     }
 
     public double calculateDiscount(double amount, Discount discount) {
-
-        if (discount == null) {
-            return 0;
+        if (amount < 0) {
+            throw new IllegalArgumentException("Amount cannot be negative.");
         }
-
-        double discountAmount = discount.calculateDiscount(amount);
-
-        return Math.min(discountAmount, amount);
+        return discount == null ? 0 : discount.calculateDiscount(amount);
     }
 }

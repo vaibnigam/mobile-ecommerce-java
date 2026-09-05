@@ -1,11 +1,15 @@
 package ecommerce.repository;
 
 import ecommerce.model.Product;
-import java.util.*;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class ProductRepository {
-
-    private Map<Long, Product> products = new HashMap<>();
+    private final Map<Long, Product> products = new HashMap<>();
 
     public void save(Product product) {
         products.put(product.getId(), product);
@@ -16,7 +20,9 @@ public class ProductRepository {
     }
 
     public List<Product> findAll() {
-        return new ArrayList<>(products.values());
+        List<Product> result = new ArrayList<>(products.values());
+        result.sort(Comparator.comparingLong(Product::getId));
+        return result;
     }
 
     public void delete(long id) {

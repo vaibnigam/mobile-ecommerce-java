@@ -1,26 +1,25 @@
 package ecommerce.service;
 
 import ecommerce.enums.PaymentStatus;
+import ecommerce.exception.InsufficientStockException;
+import ecommerce.exception.InvalidCartException;
 import ecommerce.model.*;
-
 import ecommerce.repository.OrderRepository;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class OrderService {
-
-    private OrderRepository orderRepository;
-    private CartService cartService;
-    private DiscountService discountService;
-    private PaymentService paymentService;
+    private final OrderRepository orderRepository;
+    private final CartService cartService;
+    private final DiscountService discountService;
+    private final PaymentService paymentService;
 
     public OrderService(
             OrderRepository orderRepository,
             CartService cartService,
             DiscountService discountService,
             PaymentService paymentService) {
-
         this.orderRepository = orderRepository;
         this.cartService = cartService;
         this.discountService = discountService;
@@ -34,59 +33,35 @@ public class OrderService {
             Payment payment) {
 
         if (cart == null || cart.isEmpty()) {
-            throw new IllegalArgumentException("Cart is empty.");
+            throw new InvalidCartException("Cart is empty.");
         }
+
+        if (payment == null) {
+            throw new IllegalArgumentException("Payment cannot be null.");
+        }
+
+        validateStock(cart);
 
         double subtotal = cartService.getSubtotal(cart);
 
         Discount discount = discountService.getDiscount(discountCode);
-
         double discountAmount =
                 discountService.calculateDiscount(subtotal, discount);
 
-        double finalAmount = subtotal - discountAmount;
+        double finalAmount = round(subtotal - discountAmount);
 
         if (Math.abs(payment.getAmount() - finalAmount) > 0.01) {
             throw new IllegalArgumentException(
-                    "Payment amount does not match order amount."
-            );
+                    "Payment amount does not match order amount.");
         }
 
-        boolean paymentSuccessful =
-                paymentService.processPayment(payment);
+        paymentService.processPayment(payment);
 
-        if (!paymentSuccessful) {
-            throw new IllegalArgumentException("Payment failed.");
-        }
+        List<OrderItem> orderItems = createOrderItems(cart);
 
-        List<OrderItem> orderItems = new ArrayList<>();
+        reduceStock(cart);
 
-        for (CartItem cartItem : cart.getItems()) {
-
-            Product product = cartItem.getProduct();
-
-            if (product.getStock() < cartItem.getQuantity()) {
-                throw new IllegalArgumentException(
-                        "Insufficient stock for " + product.getName()
-                );
-            }
-
-            orderItems.add(
-                    new OrderItem(
-                            product.getId(),
-                            product.getName(),
-                            product.getBrand(),
-                            product.getPrice(),
-                            cartItem.getQuantity()
-                    )
-            );
-
-            product.setStock(
-                    product.getStock() - cartItem.getQuantity()
-            );
-        }
-
-        long orderId = System.currentTimeMillis();
+        long orderId = generateOrderId();
 
         Order order = new Order(
                 orderId,
@@ -98,12 +73,15 @@ public class OrderService {
         );
 
         order.setPaymentStatus(PaymentStatus.SUCCESS);
-
         orderRepository.save(order);
-
         cartService.clearCart(cart);
 
         return order;
+    }
+
+    public double calculateDiscount(double subtotal, String discountCode) {
+        Discount discount = discountService.getDiscount(discountCode);
+        return round(discountService.calculateDiscount(subtotal, discount));
     }
 
     public Order getOrder(long orderId) {
@@ -112,5 +90,59 @@ public class OrderService {
 
     public List<Order> getUserOrders(long userId) {
         return orderRepository.findByUserId(userId);
+    }
+
+    private void validateStock(Cart cart) {
+        for (CartItem item : cart.getItems()) {
+            Product product = item.getProduct();
+
+            if (item.getQuantity() <= 0) {
+                throw new InvalidCartException(
+                        "Invalid quantity for " + product.getName());
+            }
+
+            if (item.getQuantity() > product.getStock()) {
+                throw new InsufficientStockException(
+                        "Insufficient stock for " + product.getName()
+                                + ". Available: " + product.getStock());
+            }
+        }
+    }
+
+    private List<OrderItem> createOrderItems(Cart cart) {
+        List<OrderItem> items = new ArrayList<>();
+
+        for (CartItem cartItem : cart.getItems()) {
+            Product p = cartItem.getProduct();
+
+            items.add(new OrderItem(
+                    p.getId(),
+                    p.getName(),
+                    p.getBrand(),
+                    p.getPrice(),
+                    cartItem.getQuantity()
+            ));
+        }
+
+        return items;
+    }
+
+    private void reduceStock(Cart cart) {
+        for (CartItem item : cart.getItems()) {
+            Product p = item.getProduct();
+            p.setStock(p.getStock() - item.getQuantity());
+        }
+    }
+
+    private long generateOrderId() {
+        long id = System.currentTimeMillis();
+        while (orderRepository.findById(id) != null) {
+            id++;
+        }
+        return id;
+    }
+
+    private double round(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 }

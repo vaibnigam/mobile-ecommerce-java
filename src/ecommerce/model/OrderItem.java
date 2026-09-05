@@ -1,12 +1,11 @@
 package ecommerce.model;
 
 public class OrderItem {
-
-    private long productId;
-    private String productName;
-    private String brand;
-    private double price;
-    private int quantity;
+    private final long productId;
+    private final String productName;
+    private final String brand;
+    private final double price;
+    private final int quantity;
 
     public OrderItem(long productId, String productName, String brand,
                      double price, int quantity) {
@@ -17,27 +16,10 @@ public class OrderItem {
         this.quantity = quantity;
     }
 
-    public long getProductId() {
-        return productId;
-    }
-
-    public String getProductName() {
-        return productName;
-    }
-
-    public String getBrand() {
-        return brand;
-    }
-
-    public double getPrice() {
-        return price;
-    }
-
-    public int getQuantity() {
-        return quantity;
-    }
-
-    public double getTotalPrice() {
-        return price * quantity;
-    }
+    public long getProductId() { return productId; }
+    public String getProductName() { return productName; }
+    public String getBrand() { return brand; }
+    public double getPrice() { return price; }
+    public int getQuantity() { return quantity; }
+    public double getTotalPrice() { return price * quantity; }
 }

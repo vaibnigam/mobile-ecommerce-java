@@ -1,13 +1,12 @@
 package ecommerce.model;
 
 public class Product {
-
-    private long id;
-    private String brand;
-    private String name;
+    private final long id;
+    private final String brand;
+    private final String name;
     private double price;
-    private int ram;
-    private int storage;
+    private final int ram;
+    private final int storage;
     private int stock;
 
     public Product(long id, String brand, String name, double price,
@@ -21,39 +20,14 @@ public class Product {
         this.stock = stock;
     }
 
-    public long getId() {
-        return id;
-    }
+    public long getId() { return id; }
+    public String getBrand() { return brand; }
+    public String getName() { return name; }
+    public double getPrice() { return price; }
+    public int getRam() { return ram; }
+    public int getStorage() { return storage; }
+    public int getStock() { return stock; }
 
-    public String getBrand() {
-        return brand;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public double getPrice() {
-        return price;
-    }
-
-    public int getRam() {
-        return ram;
-    }
-
-    public int getStorage() {
-        return storage;
-    }
-
-    public int getStock() {
-        return stock;
-    }
-
-    public void setPrice(double price) {
-        this.price = price;
-    }
-
-    public void setStock(int stock) {
-        this.stock = stock;
-    }
+    public void setPrice(double price) { this.price = price; }
+    public void setStock(int stock) { this.stock = stock; }
 }
