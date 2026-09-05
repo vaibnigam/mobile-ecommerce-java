@@ -1,148 +1,297 @@
 package ecommerce.service;
 
+import ecommerce.enums.OrderStatus;
+import ecommerce.enums.PaymentMethod;
 import ecommerce.enums.PaymentStatus;
-import ecommerce.exception.InsufficientStockException;
-import ecommerce.exception.InvalidCartException;
-import ecommerce.model.*;
+import ecommerce.model.Address;
+import ecommerce.model.Cart;
+import ecommerce.model.CartItem;
+import ecommerce.model.Customer;
+import ecommerce.model.Order;
+import ecommerce.model.OrderItem;
+import ecommerce.model.Product;
+import ecommerce.repository.CartRepository;
+import ecommerce.repository.CustomerRepository;
 import ecommerce.repository.OrderRepository;
+import ecommerce.repository.ProductRepository;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class OrderService {
+
     private final OrderRepository orderRepository;
-    private final CartService cartService;
-    private final DiscountService discountService;
-    private final PaymentService paymentService;
+    private final CustomerRepository customerRepository;
+    private final ProductRepository productRepository;
+    private final CartRepository cartRepository;
 
     public OrderService(
             OrderRepository orderRepository,
-            CartService cartService,
-            DiscountService discountService,
-            PaymentService paymentService) {
+            CustomerRepository customerRepository,
+            ProductRepository productRepository,
+            CartRepository cartRepository) {
+
+        if (orderRepository == null) {
+            throw new IllegalArgumentException(
+                    "Order repository cannot be null"
+            );
+        }
+
+        if (customerRepository == null) {
+            throw new IllegalArgumentException(
+                    "Customer repository cannot be null"
+            );
+        }
+
+        if (productRepository == null) {
+            throw new IllegalArgumentException(
+                    "Product repository cannot be null"
+            );
+        }
+
+        if (cartRepository == null) {
+            throw new IllegalArgumentException(
+                    "Cart repository cannot be null"
+            );
+        }
+
         this.orderRepository = orderRepository;
-        this.cartService = cartService;
-        this.discountService = discountService;
-        this.paymentService = paymentService;
+        this.customerRepository = customerRepository;
+        this.productRepository = productRepository;
+        this.cartRepository = cartRepository;
     }
 
-    public Order checkout(
-            long userId,
-            Cart cart,
-            String discountCode,
-            Payment payment) {
+    public Order placeOrder(
+            long orderId,
+            long customerId,
+            Address shippingAddress,
+            PaymentMethod paymentMethod) {
 
-        if (cart == null || cart.isEmpty()) {
-            throw new InvalidCartException("Cart is empty.");
-        }
+        validateCustomer(customerId);
 
-        if (payment == null) {
-            throw new IllegalArgumentException("Payment cannot be null.");
-        }
-
-        validateStock(cart);
-
-        double subtotal = cartService.getSubtotal(cart);
-
-        Discount discount = discountService.getDiscount(discountCode);
-        double discountAmount =
-                discountService.calculateDiscount(subtotal, discount);
-
-        double finalAmount = round(subtotal - discountAmount);
-
-        if (Math.abs(payment.getAmount() - finalAmount) > 0.01) {
+        if (orderId <= 0) {
             throw new IllegalArgumentException(
-                    "Payment amount does not match order amount.");
+                    "Order ID must be greater than zero"
+            );
         }
 
-        paymentService.processPayment(payment);
+        if (shippingAddress == null) {
+            throw new IllegalArgumentException(
+                    "Shipping address cannot be null"
+            );
+        }
 
-        List<OrderItem> orderItems = createOrderItems(cart);
+        if (paymentMethod == null) {
+            throw new IllegalArgumentException(
+                    "Payment method cannot be null"
+            );
+        }
 
-        reduceStock(cart);
+        if (orderRepository.existsById(orderId)) {
+            throw new IllegalArgumentException(
+                    "Order already exists with ID: " + orderId
+            );
+        }
 
-        long orderId = generateOrderId();
+        Cart cart = cartRepository.findByCustomerId(customerId)
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Cart not found for customer: "
+                                        + customerId
+                        )
+                );
+
+        if (cart.isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot place order with an empty cart"
+            );
+        }
+
+        List<OrderItem> orderItems = new ArrayList<>();
+
+        for (CartItem cartItem : cart.getItems()) {
+
+            Product product = productRepository
+                    .findById(cartItem.getProduct().getId())
+                    .orElseThrow(() ->
+                            new IllegalArgumentException(
+                                    "Product not found with ID: "
+                                            + cartItem.getProduct().getId()
+                            )
+                    );
+
+            if (!product.isActive()) {
+                throw new IllegalStateException(
+                        "Product is not active: "
+                                + product.getName()
+                );
+            }
+
+            if (product.getStockQuantity()
+                    < cartItem.getQuantity()) {
+
+                throw new IllegalStateException(
+                        "Insufficient stock for product: "
+                                + product.getName()
+                );
+            }
+
+            OrderItem orderItem = new OrderItem(
+                    product.getId(),
+                    product.getName(),
+                    product.getPrice(),
+                    cartItem.getQuantity()
+            );
+
+            orderItems.add(orderItem);
+        }
 
         Order order = new Order(
                 orderId,
-                userId,
+                customerId,
                 orderItems,
-                subtotal,
-                discountAmount,
-                finalAmount
+                shippingAddress,
+                paymentMethod,
+                PaymentStatus.PENDING
         );
 
-        order.setPaymentStatus(PaymentStatus.SUCCESS);
+        for (CartItem cartItem : cart.getItems()) {
+
+            Product product = productRepository
+                    .findById(cartItem.getProduct().getId())
+                    .orElseThrow(() ->
+                            new IllegalArgumentException(
+                                    "Product not found"
+                            )
+                    );
+
+            product.reduceStock(cartItem.getQuantity());
+
+            productRepository.save(product);
+        }
+
         orderRepository.save(order);
-        cartService.clearCart(cart);
+
+        cart.clear();
+
+        cartRepository.save(cart);
 
         return order;
     }
 
-    public double calculateDiscount(double subtotal, String discountCode) {
-        Discount discount = discountService.getDiscount(discountCode);
-        return round(discountService.calculateDiscount(subtotal, discount));
+    public Order getOrderById(long orderId) {
+
+        if (orderId <= 0) {
+            throw new IllegalArgumentException(
+                    "Order ID must be greater than zero"
+            );
+        }
+
+        return orderRepository.findById(orderId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Order not found with ID: "
+                                        + orderId
+                        )
+                );
     }
 
-    public Order getOrder(long orderId) {
-        return orderRepository.findById(orderId);
+    public List<Order> getAllOrders() {
+        return orderRepository.findAll();
     }
 
-    public List<Order> getUserOrders(long userId) {
-        return orderRepository.findByUserId(userId);
+    public List<Order> getOrdersByCustomer(long customerId) {
+
+        validateCustomer(customerId);
+
+        return orderRepository.findByCustomerId(customerId);
     }
 
-    private void validateStock(Cart cart) {
-        for (CartItem item : cart.getItems()) {
-            Product product = item.getProduct();
+    public void updateOrderStatus(
+            long orderId,
+            OrderStatus newStatus) {
 
-            if (item.getQuantity() <= 0) {
-                throw new InvalidCartException(
-                        "Invalid quantity for " + product.getName());
-            }
+        if (newStatus == null) {
+            throw new IllegalArgumentException(
+                    "Order status cannot be null"
+            );
+        }
 
-            if (item.getQuantity() > product.getStock()) {
-                throw new InsufficientStockException(
-                        "Insufficient stock for " + product.getName()
-                                + ". Available: " + product.getStock());
-            }
+        Order order = getOrderById(orderId);
+
+        OrderStatus currentStatus = order.getStatus();
+
+        validateStatusTransition(
+                currentStatus,
+                newStatus
+        );
+
+        order.updateStatus(newStatus);
+
+        orderRepository.save(order);
+    }
+
+    public void updatePaymentStatus(
+            long orderId,
+            PaymentStatus paymentStatus) {
+
+        if (paymentStatus == null) {
+            throw new IllegalArgumentException(
+                    "Payment status cannot be null"
+            );
+        }
+
+        Order order = getOrderById(orderId);
+
+        order.updatePaymentStatus(paymentStatus);
+
+        orderRepository.save(order);
+    }
+
+    private void validateCustomer(long customerId) {
+
+        if (customerId <= 0) {
+            throw new IllegalArgumentException(
+                    "Customer ID must be greater than zero"
+            );
+        }
+
+        if (!customerRepository.existsById(customerId)) {
+            throw new IllegalArgumentException(
+                    "Customer not found with ID: "
+                            + customerId
+            );
         }
     }
 
-    private List<OrderItem> createOrderItems(Cart cart) {
-        List<OrderItem> items = new ArrayList<>();
+    private void validateStatusTransition(
+            OrderStatus currentStatus,
+            OrderStatus newStatus) {
 
-        for (CartItem cartItem : cart.getItems()) {
-            Product p = cartItem.getProduct();
+        boolean validTransition = switch (currentStatus) {
 
-            items.add(new OrderItem(
-                    p.getId(),
-                    p.getName(),
-                    p.getBrand(),
-                    p.getPrice(),
-                    cartItem.getQuantity()
-            ));
+            case PLACED ->
+                    newStatus == OrderStatus.CONFIRMED
+                            || newStatus == OrderStatus.CANCELLED;
+
+            case CONFIRMED ->
+                    newStatus == OrderStatus.SHIPPED
+                            || newStatus == OrderStatus.CANCELLED;
+
+            case SHIPPED ->
+                    newStatus == OrderStatus.DELIVERED;
+
+            case DELIVERED, CANCELLED ->
+                    false;
+        };
+
+        if (!validTransition) {
+            throw new IllegalStateException(
+                    "Invalid order status transition: "
+                            + currentStatus
+                            + " -> "
+                            + newStatus
+            );
         }
-
-        return items;
-    }
-
-    private void reduceStock(Cart cart) {
-        for (CartItem item : cart.getItems()) {
-            Product p = item.getProduct();
-            p.setStock(p.getStock() - item.getQuantity());
-        }
-    }
-
-    private long generateOrderId() {
-        long id = System.currentTimeMillis();
-        while (orderRepository.findById(id) != null) {
-            id++;
-        }
-        return id;
-    }
-
-    private double round(double value) {
-        return Math.round(value * 100.0) / 100.0;
     }
 }

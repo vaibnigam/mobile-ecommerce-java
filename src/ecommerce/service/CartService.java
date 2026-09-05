@@ -1,106 +1,168 @@
 package ecommerce.service;
 
-import ecommerce.exception.InsufficientStockException;
-import ecommerce.exception.InvalidCartException;
 import ecommerce.model.Cart;
-import ecommerce.model.CartItem;
 import ecommerce.model.Product;
+import ecommerce.repository.CartRepository;
+import ecommerce.repository.CustomerRepository;
+import ecommerce.repository.ProductRepository;
+
+import java.util.List;
 
 public class CartService {
-    private final ProductService productService;
 
-    public CartService(ProductService productService) {
-        this.productService = productService;
+    private final CartRepository cartRepository;
+    private final CustomerRepository customerRepository;
+    private final ProductRepository productRepository;
+
+    public CartService(
+            CartRepository cartRepository,
+            CustomerRepository customerRepository,
+            ProductRepository productRepository) {
+
+        if (cartRepository == null) {
+            throw new IllegalArgumentException(
+                    "Cart repository cannot be null"
+            );
+        }
+
+        if (customerRepository == null) {
+            throw new IllegalArgumentException(
+                    "Customer repository cannot be null"
+            );
+        }
+
+        if (productRepository == null) {
+            throw new IllegalArgumentException(
+                    "Product repository cannot be null"
+            );
+        }
+
+        this.cartRepository = cartRepository;
+        this.customerRepository = customerRepository;
+        this.productRepository = productRepository;
     }
 
-    public void addToCart(Cart cart, long productId, int quantity) {
-        validateCart(cart);
+    public Cart getCart(long customerId) {
+
+        validateCustomer(customerId);
+
+        return cartRepository.findByCustomerId(customerId)
+                .orElseGet(() -> {
+
+                    Cart cart = new Cart(customerId);
+
+                    cartRepository.save(cart);
+
+                    return cart;
+                });
+    }
+
+    public void addToCart(
+            long customerId,
+            long productId,
+            int quantity) {
 
         if (quantity <= 0) {
-            throw new InvalidCartException("Quantity must be greater than zero.");
+            throw new IllegalArgumentException(
+                    "Quantity must be greater than zero"
+            );
         }
 
-        Product product = productService.getProduct(productId);
+        validateCustomer(customerId);
 
-        if (product.getStock() <= 0) {
-            throw new InsufficientStockException(
-                    product.getName() + " is out of stock.");
+        Product product = getProduct(productId);
+
+        if (!product.isActive()) {
+            throw new IllegalStateException(
+                    "Product is not active"
+            );
         }
 
-        for (CartItem item : cart.getItems()) {
-            if (item.getProduct().getId() == productId) {
-                int newQuantity = item.getQuantity() + quantity;
-                validateStock(product, newQuantity);
-                item.setQuantity(newQuantity);
-                return;
-            }
+        if (product.getStockQuantity() < quantity) {
+            throw new IllegalStateException(
+                    "Insufficient stock for product: "
+                            + product.getName()
+            );
         }
 
-        validateStock(product, quantity);
-        cart.addItem(new CartItem(product, quantity));
+        Cart cart = getCart(customerId);
+
+        cart.addItem(product, quantity);
+
+        cartRepository.save(cart);
     }
 
-    public void removeFromCart(Cart cart, long productId) {
-        validateCart(cart);
+    public void removeFromCart(
+            long customerId,
+            long productId) {
 
-        boolean removed = cart.getItems().removeIf(
-                item -> item.getProduct().getId() == productId);
+        validateCustomer(customerId);
 
-        if (!removed) {
-            throw new InvalidCartException("Product not found in cart.");
-        }
+        Cart cart = getExistingCart(customerId);
+
+        cart.removeItem(productId);
+
+        cartRepository.save(cart);
     }
 
-    public void updateQuantity(Cart cart, long productId, int quantity) {
-        validateCart(cart);
+    public Cart getExistingCart(long customerId) {
 
-        if (quantity <= 0) {
-            throw new InvalidCartException("Quantity must be greater than zero.");
-        }
+        validateCustomer(customerId);
 
-        for (CartItem item : cart.getItems()) {
-            if (item.getProduct().getId() == productId) {
-                validateStock(item.getProduct(), quantity);
-                item.setQuantity(quantity);
-                return;
-            }
-        }
-
-        throw new InvalidCartException("Product not found in cart.");
+        return cartRepository.findByCustomerId(customerId)
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "Cart not found for customer: "
+                                        + customerId
+                        )
+                );
     }
 
-    public double getSubtotal(Cart cart) {
-        validateCart(cart);
-        return cart.getSubtotal();
-    }
+    public void clearCart(long customerId) {
 
-    public int getTotalItems(Cart cart) {
-        validateCart(cart);
-        return cart.getItems().stream()
-                .mapToInt(CartItem::getQuantity)
-                .sum();
-    }
+        validateCustomer(customerId);
 
-    public void clearCart(Cart cart) {
-        validateCart(cart);
+        Cart cart = getExistingCart(customerId);
+
         cart.clear();
+
+        cartRepository.save(cart);
     }
 
-    public boolean isEmpty(Cart cart) {
-        return cart == null || cart.isEmpty();
+    public List<Cart> getAllCarts() {
+        return cartRepository.findAll();
     }
 
-    private void validateCart(Cart cart) {
-        if (cart == null) {
-            throw new InvalidCartException("Cart cannot be null.");
+    private void validateCustomer(long customerId) {
+
+        if (customerId <= 0) {
+            throw new IllegalArgumentException(
+                    "Customer ID must be greater than zero"
+            );
+        }
+
+        if (!customerRepository.existsById(customerId)) {
+            throw new IllegalArgumentException(
+                    "Customer not found with ID: "
+                            + customerId
+            );
         }
     }
 
-    private void validateStock(Product product, int quantity) {
-        if (quantity > product.getStock()) {
-            throw new InsufficientStockException(
-                    "Insufficient stock for " + product.getName()
-                            + ". Available: " + product.getStock());
+    private Product getProduct(long productId) {
+
+        if (productId <= 0) {
+            throw new IllegalArgumentException(
+                    "Product ID must be greater than zero"
+            );
         }
+
+        return productRepository.findById(productId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Product not found with ID: "
+                                        + productId
+                        )
+                );
     }
 }

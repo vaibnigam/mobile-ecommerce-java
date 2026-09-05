@@ -1,7 +1,8 @@
 package ecommerce.exception;
 
-public class ProductNotFoundException extends ECommerceException {
-    public ProductNotFoundException(String message) {
-        super(message);
+public class ProductNotFoundException extends BusinessException {
+
+    public ProductNotFoundException(long productId) {
+        super("Product not found with ID: " + productId);
     }
 }
